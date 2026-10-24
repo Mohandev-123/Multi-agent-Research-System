@@ -57,6 +57,7 @@ class PipelineState(BaseModel):
     search_results: list[SearchResult] = Field(default_factory=list)
     sources: list[SourceEvidence] = Field(default_factory=list)
     report_draft: str = ""
+    output_path: str = ""
     critic_feedback: Optional[CriticFeedback] = None
     revision_count: int = 0
     max_revisions: int = 3

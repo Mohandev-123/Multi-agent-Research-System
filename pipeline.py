@@ -9,7 +9,7 @@ import logging
 import sys
 import os
 from datetime import datetime
-from pathlib import Path
+from typing import Callable
 
 from rich.console import Console
 from rich.panel import Panel
@@ -22,11 +22,20 @@ from agents import (
     run_writer_agent,
     run_critic_agent,
 )
-from models import PipelineState, CriticFeedback
+from models import PipelineState
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Logging setup
 # ═══════════════════════════════════════════════════════════════════════════
+
+# When stdout is redirected (e.g. under uvicorn), Windows can fall back to a
+# legacy code page that cannot encode emoji or report text. Replace unsupported
+# characters instead of crashing the pipeline.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, OSError, ValueError):
+        pass
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +44,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pipeline")
 
-console = Console()
+console = Console(legacy_windows=False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -53,7 +62,10 @@ OUTPUT_DIR = "output"
 # Pipeline
 # ═══════════════════════════════════════════════════════════════════════════
 
-def run_research_pipeline(topic: str) -> PipelineState:
+def run_research_pipeline(
+    topic: str,
+    on_event: Callable[[dict], None] | None = None,
+) -> PipelineState:
     """
     Run the full research pipeline:
       1. Search Agent → structured search results
@@ -61,12 +73,24 @@ def run_research_pipeline(topic: str) -> PipelineState:
       3. Writer Agent → draft report
       4. Critic Agent → evaluate + revision loop (up to MAX_REVISIONS)
       5. Save final report to file
+
+    ``on_event`` is an optional callback that receives live progress events
+    such as ``{"agent": "search", "status": "running", "detail": "..."}``.
     """
     state = PipelineState(
         topic=topic,
         max_revisions=MAX_REVISIONS,
         quality_threshold=QUALITY_THRESHOLD,
     )
+
+    def emit(agent: str, status: str, detail: str = "") -> None:
+        """Report agent progress to the caller without affecting the pipeline."""
+        if on_event is None:
+            return
+        try:
+            on_event({"agent": agent, "status": status, "detail": detail})
+        except Exception:
+            logger.debug("Progress callback failed.", exc_info=True)
 
     # ── Step 1: Search Agent ──────────────────────────────────────────────
     console.print(Panel(
@@ -75,6 +99,7 @@ def run_research_pipeline(topic: str) -> PipelineState:
         border_style="cyan",
     ))
 
+    emit("search", "running", f"Finding sources for: {topic}")
     try:
         state.search_results = run_search_agent(
             topic, max_queries=MAX_SEARCH_QUERIES
@@ -83,6 +108,12 @@ def run_research_pipeline(topic: str) -> PipelineState:
         logger.error("Search Agent failed: %s", e)
         state.warnings.append(f"Search Agent error: {e}")
         state.search_results = []
+        emit("search", "error", str(e))
+    else:
+        if state.search_results:
+            emit("search", "done", f"{len(state.search_results)} sources found")
+        else:
+            emit("search", "done", "No results found")
 
     if not state.search_results:
         console.print("[bold red]⚠ No search results found. "
@@ -106,6 +137,8 @@ def run_research_pipeline(topic: str) -> PipelineState:
         border_style="cyan",
     ))
 
+    emit("reader", "running", f"Reading up to {MAX_URLS_TO_SCRAPE} pages")
+    reader_failed = False
     try:
         state.sources = run_reader_agent(
             state.search_results, max_urls=MAX_URLS_TO_SCRAPE
@@ -114,9 +147,19 @@ def run_research_pipeline(topic: str) -> PipelineState:
         logger.error("Reader Agent failed: %s", e)
         state.warnings.append(f"Reader Agent error: {e}")
         state.sources = []
+        reader_failed = True
+        emit("reader", "error", str(e))
 
     successful = sum(1 for s in state.sources if s.scrape_success)
     total = len(state.sources)
+
+    if not reader_failed:
+        emit(
+            "reader",
+            "done",
+            f"{successful} of {total} pages read" if total else "No pages to read",
+        )
+
     console.print(
         f"  Scraped [green]{successful}[/green]/{total} URLs successfully."
     )
@@ -143,6 +186,7 @@ def run_research_pipeline(topic: str) -> PipelineState:
         console.print(f"\n  [bold yellow]📝 {label}[/bold yellow]")
 
         # Writer
+        emit("writer", "running", label)
         try:
             state.report_draft = run_writer_agent(
                 topic=topic,
@@ -153,12 +197,20 @@ def run_research_pipeline(topic: str) -> PipelineState:
         except Exception as e:
             logger.error("Writer Agent failed on %s: %s", label, e)
             state.warnings.append(f"Writer Agent error ({label}): {e}")
+            emit("writer", "error", str(e))
             break
 
         if not state.report_draft.strip():
             logger.warning("Writer produced empty report on %s.", label)
             state.warnings.append(f"Writer produced empty report on {label}.")
+            emit("writer", "error", "Writer produced an empty report.")
             break
+
+        emit(
+            "writer",
+            "done",
+            f"{label}: {len(state.report_draft):,} characters",
+        )
 
         # Track best draft
         if best_report == "":
@@ -166,6 +218,7 @@ def run_research_pipeline(topic: str) -> PipelineState:
 
         # Critic
         console.print(f"  [bold yellow]🔍 Critic evaluating {label}...[/bold yellow]")
+        emit("critic", "running", f"Reviewing {label.lower()}")
         try:
             feedback = run_critic_agent(
                 report=state.report_draft,
@@ -175,9 +228,12 @@ def run_research_pipeline(topic: str) -> PipelineState:
         except Exception as e:
             logger.error("Critic Agent failed on %s: %s", label, e)
             state.warnings.append(f"Critic Agent error ({label}): {e}")
+            emit("critic", "error", str(e))
             # Keep the current draft as best
             best_report = state.report_draft
             break
+
+        emit("critic", "done", f"Score {feedback.score}/10 · {feedback.decision}")
 
         # Display critic results
         score_color = "green" if feedback.score >= QUALITY_THRESHOLD else "red"
@@ -295,6 +351,7 @@ def _save_report(topic: str, state: PipelineState) -> str:
                 f.write(f"- {w}\n")
 
     logger.info("Report saved to %s", filepath)
+    state.output_path = filepath
     return filepath
 
 

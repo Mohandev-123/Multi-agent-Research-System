@@ -13,3 +13,7 @@ __pycache__/
 
 # Generated output
 output/
+
+# Node / frontend
+node_modules/
+web/dist/

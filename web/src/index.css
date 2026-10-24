@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+:root {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  color: #0f172a;
+  background-color: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: #ffffff;
+}
+
+/* Rendered research report (markdown) */
+.report > :first-child {
+  margin-top: 0;
+}
+
+.report h1 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 1.75rem 0 0.75rem;
+}
+
+.report h2 {
+  font-size: 1.15rem;
+  line-height: 1.6rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.report h3 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.report p {
+  margin: 0.75rem 0;
+  line-height: 1.7;
+  color: #334155;
+}
+
+.report ul,
+.report ol {
+  margin: 0.75rem 0;
+  padding-left: 1.25rem;
+  color: #334155;
+}
+
+.report ul {
+  list-style: disc;
+}
+
+.report ol {
+  list-style: decimal;
+}
+
+.report li {
+  margin: 0.35rem 0;
+  line-height: 1.65;
+}
+
+.report a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.report a:hover {
+  color: #1e40af;
+}
+
+.report strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.report blockquote {
+  border-left: 3px solid #e2e8f0;
+  margin: 1rem 0;
+  padding-left: 1rem;
+  color: #475569;
+}
+
+.report code {
+  background: #f1f5f9;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+
+.report pre {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+
+.report pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.report hr {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 1.5rem 0;
+}
+
+.report table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.report th,
+.report td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+}
+
+.report th {
+  background: #f8fafc;
+  font-weight: 600;
+}
